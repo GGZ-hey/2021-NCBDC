@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import datetime
 
-car_df = pd.read_csv('/home/Gong.gz/SSD/2021-NCBDC/car1_df_preprossing.csv')
+# car_df = pd.read_csv('/home/Gong.gz/SSD/2021-NCBDC/car1_df_preprossing.csv')
 
 
 def setHourColumn(df):
@@ -24,12 +24,12 @@ def plotHourBar(car_df, saved_path):
     plt.savefig(saved_path, dpi=300)
 
 
-first_period = [4,10]
-second_period = [10,16]
-third_period = [16,23]
+first_period = [4, 10]
+second_period = [10, 16]
+third_period = [16, 23]
 
 
-def filledPeriod(df, first_period, second_period, third_period):
+def filledPeriod(df, first_period=first_period, second_period=second_period, third_period=third_period):
     n_rows = df.shape[0]
     df['dispersed_hour1'] = [0] * n_rows
     df['dispersed_hour2'] = [0] * n_rows

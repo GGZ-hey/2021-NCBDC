@@ -4,18 +4,20 @@ import numpy as np
 from matplotlib import pyplot as plt
 import datetime
 
-car41_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-01448-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car29_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-00367-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car32_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-01749-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car33_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-01780-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car39_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-00158-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car34_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-01002-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car30_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-00790-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car62_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-01793-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car03_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-02889-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
-car40_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/part-01439-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car41_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-01448-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car29_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-00367-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car32_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-01749-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car33_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-01780-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car39_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-00158-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car34_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-01002-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car30_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-00790-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car62_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-01793-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car03_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-02889-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
+car40_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/yuan_shi_data/part-01439-741da358-7624-4bb4-806b-835c106c6b2d.c000.csv"
 
-car_df_original = pd.read_csv(car_path)
+car_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/cleaned_data_tuXk/car0_clean.csv"
+
+car_df_original = pd.read_csv(car40_path)
 car_df_original['经度'] = car_df_original['经度'] / 1e6
 car_df_original['维度'] = car_df_original['维度'] / 1e6
 
@@ -171,6 +173,10 @@ print(pd.Series(car_df.index[0:10]).apply(tf2miles_x))
 car_df.reset_index(drop=False, inplace=True)
 car_df['x'] = pd.Series(car_df.index).apply(tf2miles_x)
 car_df['y'] = pd.Series(car_df.index).apply(tf2miles_y)
+
+# 注意这里需要排序
+car_df = car_df.sort_values(by=['normalized_time'])
+car_df.reset_index(drop=True, inplace=True)
 
 # slice
 slicer = ContinuousDriveSlicer(car_df)

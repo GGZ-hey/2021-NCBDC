@@ -28,15 +28,24 @@ car_df_filter_state3 = car_df_filter[(car_df_filter['充电状态'] == 3) &
                                      (car_df_filter['车辆状态'] == 1)]  # 删除充电片段
 
 #################### 可视化全局 ###########################
+car_str = r"car10(NO.40)/"
+
 plt.figure(1)
-plt.cla()
-# plt.scatter(car_df['x']-x0, car_df['y']-y0,marker='o')
-plt.scatter(car_df_filter_by_drive_filter['x'] - x0,
-            car_df_filter_by_drive_filter['y'] - y0,
-            marker='o')
+plt.clf()
+# plt.scatter(car_df['x'] - car_df['x'].iloc[0],
+#             car_df['y'] - car_df['y'].iloc[0],
+#             marker='o')
+plt.scatter(car_df['x'], car_df['y'], marker='o')
+# plt.scatter(car_df_filter_by_drive_filter['x'] - x0,
+#             car_df_filter_by_drive_filter['y'] - y0,
+#             marker='o')
 # plt.xlim(-10000,10000)
 # plt.ylim(-5000,5000)
-plt.savefig('/home/Gong.gz/HDD/2021-NCBDC/scatter_concat_drive_filter2.jpg',
+# plt.savefig('/home/Gong.gz/HDD/2021-NCBDC/figure/' + car_str +
+#             'scatter_car_df_ori.jpg',
+#             dpi=300)
+plt.savefig('/home/Gong.gz/HDD/2021-NCBDC/figure/' +
+            'scatter_car_df_ori.jpg',
             dpi=300)
 ##########################################################
 
@@ -44,28 +53,31 @@ plt.savefig('/home/Gong.gz/HDD/2021-NCBDC/scatter_concat_drive_filter2.jpg',
 ## 首先需要通过切分后的行驶片段找出s_idx和e_idx
 ## 接着可视化一下
 GPS_ERROR = 20  # m
-fig_indices = list(np.arange(1244, 1344))
-fig_indices = list(np.arange(134, 144)) + fig_indices
+fig_indices = list(np.arange(1200, 1250))
+fig_indices = list(np.arange(100, 150)) + fig_indices
 
 for ii in fig_indices:
     tmp_drive_data = sliced_result[ii].copy(deep=True)
     if tmp_drive_data.empty:
         continue
-    tmp_drive_data.reset_index(inplace=True)
+    tmp_drive_data.reset_index(drop=True, inplace=True)
 
     x0 = tmp_drive_data['x'].iloc[0]
     y0 = tmp_drive_data['y'].iloc[0]
 
     # 首先可视化一下
     plt.figure(2)
-    plt.cla()
+    plt.clf()
     X_vec = np.array(tmp_drive_data['x'] - x0).reshape(-1, 1)
     Y_vec = np.array(tmp_drive_data['y'] - y0).reshape(-1, 1)
     n_vec = X_vec.shape[0]
     XY_data = np.concatenate((X_vec, Y_vec), axis=1).reshape(n_vec, 2)
     plt.scatter(XY_data[:, 0], XY_data[:, 1], marker='o')
-    plt.savefig('/home/Gong.gz/HDD/2021-NCBDC/figure/scatter' + str(ii) +
-                '.jpg',
+    # plt.savefig('/home/Gong.gz/HDD/2021-NCBDC/figure/' + car_str + 'scatter' +
+    #             str(ii) + '.jpg',
+    #             dpi=300)
+    plt.savefig('/home/Gong.gz/HDD/2021-NCBDC/figure/' + 'scatter' +
+                str(ii) + '.jpg',
                 dpi=300)
 
 # TODO: 聚类算法
@@ -73,7 +85,8 @@ from sklearn.cluster import DBSCAN
 
 ############################### 大、小漂移去除 ################################
 # 模板匹配前需要去除模板的小漂移
-template_idx = 142
+template_idxs = [141, 107, 101, 120, 104, 100, 102, 107, 110,105]
+template_idx = template_idxs[8]
 xy_template = sliced_result[template_idx]
 
 
@@ -95,9 +108,9 @@ xy_template_filter = filterLittleDrift(xy_template)
 xy_template_filter_reindex = xy_template_filter.reset_index(drop=True)
 
 # 模板匹配
-outliers_idx = 1332
-tested_df = sliced_result[outliers_idx]
-min_match_dis = 5000  # m
+# outliers_idx = 1314
+# tested_df = sliced_result[outliers_idx]
+# min_match_dis = 5000  # m
 
 
 def findTemplateNotMatchP(tested_df, xy_template, min_match_dis=5000):
@@ -134,22 +147,13 @@ def findTemplateNotMatchP(tested_df, xy_template, min_match_dis=5000):
     return indices
 
 
-outliers_idx = findTemplateNotMatchP(tested_df, xy_template_filter_reindex)
-
-# 找出第一个非异常点
-first_idx = -1
-for i in range(len(outliers_idx)):
-    if i != outliers_idx[i]:
-        first_idx = i
-        break
-assert (first_idx + 1 != len(tested_df))
+# outliers_idx = findTemplateNotMatchP(tested_df, xy_template_filter_reindex)
 
 
 # function
 def findFirstNormal(outliers_idx):
     if (len(outliers_idx) == 0):
         return -1
-
     first_idx = 0
     detect_flag = False
     for i in range(len(outliers_idx)):
@@ -159,81 +163,80 @@ def findFirstNormal(outliers_idx):
             break
     if detect_flag == False:
         first_idx = outliers_idx[-1] + 1
-
     return first_idx
 
 
-# 异常值填充
-tested_df_copy = tested_df.copy(deep=True)
-tested_df_copy.reset_index(drop=False, inplace=True)
-max_velocity = 50  # m/s
-for i in range(0, len(outliers_idx)):  # 默认第一个肯定是对的
-    if outliers_idx[i] <= first_idx:
-        continue
-    if outliers_idx[i] == len(tested_df_copy) - 1:  # 数据最后一个
-        print('*' * 10, 'FIRST ↓')
-        print(
-            tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
-        tested_df_copy.loc[outliers_idx[i],
-                           '经度'] = tested_df_copy.iloc[outliers_idx[i] -
-                                                       1]['经度']
-        tested_df_copy.loc[outliers_idx[i],
-                           '维度'] = tested_df_copy.iloc[outliers_idx[i] -
-                                                       1]['维度']
-        tested_df_copy.loc[outliers_idx[i],
-                           'x'] = tested_df_copy.iloc[outliers_idx[i] - 1]['x']
-        tested_df_copy.loc[outliers_idx[i],
-                           'y'] = tested_df_copy.iloc[outliers_idx[i] - 1]['y']
-        print(
-            tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
-        print('*' * 10, 'END ↑')
-    elif i != (len(outliers_idx) - 1) and (outliers_idx[i + 1] -
-                                           outliers_idx[i] == 1):
-        print('-' * 10, 'FIRST ↓')
-        print(
-            tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
-        vx = np.clip((tested_df_copy.iloc[outliers_idx[i] - 1]['x'] -
-                      tested_df_copy.iloc[outliers_idx[i] - 2]['x']) /
-                     tested_df_copy.iloc[outliers_idx[i] - 1]['dt'],
-                     -1 * max_velocity, max_velocity)
-        vy = np.clip((tested_df_copy.iloc[outliers_idx[i] - 1]['y'] -
-                      tested_df_copy.iloc[outliers_idx[i] - 2]['y']) /
-                     tested_df_copy.iloc[outliers_idx[i] - 1]['dt'],
-                     -1 * max_velocity, max_velocity)
-        tested_df_copy.loc[outliers_idx[i], 'x'] = tested_df_copy.iloc[
-            outliers_idx[i] -
-            1]['x'] + vx * tested_df_copy.loc[outliers_idx[i], 'dt']
-        tested_df_copy.loc[outliers_idx[i], 'y'] = tested_df_copy.iloc[
-            outliers_idx[i] -
-            1]['y'] + vy * tested_df_copy.loc[outliers_idx[i], 'dt']
-        lonlat_coordinate = millerToLonLat(
-            tested_df_copy.iloc[outliers_idx[i]]['x'],
-            tested_df_copy.iloc[outliers_idx[i]]['y'])
-        tested_df_copy.loc[outliers_idx[i], '经度'] = lonlat_coordinate[0][0]
-        tested_df_copy.loc[outliers_idx[i], '维度'] = lonlat_coordinate[0][1]
-        print(
-            tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
-        print('-' * 10, 'END ↑')
-    else:
-        print('=' * 10, 'FIRST ↓')
-        print(
-            tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
-        tested_df_copy.loc[
-            outliers_idx[i],
-            'x'] = (tested_df_copy.iloc[outliers_idx[i] - 1]['x'] +
-                    tested_df_copy.iloc[outliers_idx[i] + 1]['x']) / 2
-        tested_df_copy.loc[
-            outliers_idx[i],
-            'y'] = (tested_df_copy.iloc[outliers_idx[i] - 1]['y'] +
-                    tested_df_copy.iloc[outliers_idx[i] + 1]['y']) / 2
-        lonlat_coordinate = millerToLonLat(
-            tested_df_copy.iloc[outliers_idx[i]]['x'],
-            tested_df_copy.iloc[outliers_idx[i]]['y'])
-        tested_df_copy.loc[outliers_idx[i], '经度'] = lonlat_coordinate[0][0]
-        tested_df_copy.loc[outliers_idx[i], '维度'] = lonlat_coordinate[0][1]
-        print(
-            tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
-        print('=' * 10, 'END ↑')
+# 【------- 测试 -------】异常值填充
+# tested_df_copy = tested_df.copy(deep=True)
+# tested_df_copy.reset_index(drop=False, inplace=True)
+# max_velocity = 50  # m/s
+# for i in range(0, len(outliers_idx)):  # 默认第一个肯定是对的
+#     if outliers_idx[i] <= first_idx:
+#         continue
+#     if outliers_idx[i] == len(tested_df_copy) - 1:  # 数据最后一个
+#         print('*' * 10, 'FIRST ↓')
+#         print(
+#             tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
+#         tested_df_copy.loc[outliers_idx[i],
+#                            '经度'] = tested_df_copy.iloc[outliers_idx[i] -
+#                                                        1]['经度']
+#         tested_df_copy.loc[outliers_idx[i],
+#                            '维度'] = tested_df_copy.iloc[outliers_idx[i] -
+#                                                        1]['维度']
+#         tested_df_copy.loc[outliers_idx[i],
+#                            'x'] = tested_df_copy.iloc[outliers_idx[i] - 1]['x']
+#         tested_df_copy.loc[outliers_idx[i],
+#                            'y'] = tested_df_copy.iloc[outliers_idx[i] - 1]['y']
+#         print(
+#             tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
+#         print('*' * 10, 'END ↑')
+#     elif i != (len(outliers_idx) - 1) and (outliers_idx[i + 1] -
+#                                            outliers_idx[i] == 1):
+#         print('-' * 10, 'FIRST ↓')
+#         print(
+#             tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
+#         vx = np.clip((tested_df_copy.iloc[outliers_idx[i] - 1]['x'] -
+#                       tested_df_copy.iloc[outliers_idx[i] - 2]['x']) /
+#                      tested_df_copy.iloc[outliers_idx[i] - 1]['dt'],
+#                      -1 * max_velocity, max_velocity)
+#         vy = np.clip((tested_df_copy.iloc[outliers_idx[i] - 1]['y'] -
+#                       tested_df_copy.iloc[outliers_idx[i] - 2]['y']) /
+#                      tested_df_copy.iloc[outliers_idx[i] - 1]['dt'],
+#                      -1 * max_velocity, max_velocity)
+#         tested_df_copy.loc[outliers_idx[i], 'x'] = tested_df_copy.iloc[
+#             outliers_idx[i] -
+#             1]['x'] + vx * tested_df_copy.loc[outliers_idx[i], 'dt']
+#         tested_df_copy.loc[outliers_idx[i], 'y'] = tested_df_copy.iloc[
+#             outliers_idx[i] -
+#             1]['y'] + vy * tested_df_copy.loc[outliers_idx[i], 'dt']
+#         lonlat_coordinate = millerToLonLat(
+#             tested_df_copy.iloc[outliers_idx[i]]['x'],
+#             tested_df_copy.iloc[outliers_idx[i]]['y'])
+#         tested_df_copy.loc[outliers_idx[i], '经度'] = lonlat_coordinate[0][0]
+#         tested_df_copy.loc[outliers_idx[i], '维度'] = lonlat_coordinate[0][1]
+#         print(
+#             tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
+#         print('-' * 10, 'END ↑')
+#     else:
+#         print('=' * 10, 'FIRST ↓')
+#         print(
+#             tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
+#         tested_df_copy.loc[
+#             outliers_idx[i],
+#             'x'] = (tested_df_copy.iloc[outliers_idx[i] - 1]['x'] +
+#                     tested_df_copy.iloc[outliers_idx[i] + 1]['x']) / 2
+#         tested_df_copy.loc[
+#             outliers_idx[i],
+#             'y'] = (tested_df_copy.iloc[outliers_idx[i] - 1]['y'] +
+#                     tested_df_copy.iloc[outliers_idx[i] + 1]['y']) / 2
+#         lonlat_coordinate = millerToLonLat(
+#             tested_df_copy.iloc[outliers_idx[i]]['x'],
+#             tested_df_copy.iloc[outliers_idx[i]]['y'])
+#         tested_df_copy.loc[outliers_idx[i], '经度'] = lonlat_coordinate[0][0]
+#         tested_df_copy.loc[outliers_idx[i], '维度'] = lonlat_coordinate[0][1]
+#         print(
+#             tested_df_copy.iloc[outliers_idx[i]][['时间', 'x', 'y', '经度', '维度']])
+#         print('=' * 10, 'END ↑')
 
 
 def paddingDrift(df, outliers_idx, first_idx, repad=False, max_velocity=50):
@@ -414,8 +417,8 @@ def paddingLittleDrift(df, outliers_idx):
 
 
 # 小漂移纠正
-little_drift_idx = 1316  # car NO.1
-little_drift_df = sliced_result[little_drift_idx]
+# little_drift_idx = 1316  # car NO.1
+# little_drift_df = sliced_result[little_drift_idx]
 
 
 def calDt(data):
@@ -428,7 +431,10 @@ def calDt(data):
 def filterLittleDriftLoop(df_data, max_velocity=50):
     df_data_copy = df_data.copy(deep=True)
     print_f = True
+    litD_num = 0  # 统计计数
     while (True):
+        if df_data.empty:
+            break
         # 计算小漂移误差
         dx = df_data_copy['x'].diff()
         dx.iloc[0] = 0
@@ -443,6 +449,7 @@ def filterLittleDriftLoop(df_data, max_velocity=50):
         if (driftJudge(velocity_between, max_velocity)):
             break
         # 修正小漂移误差
+        litD_num += 1  # 统计
         drift_idx = np.where(velocity_between > max_velocity * max_velocity)
         if (print_f):
             print_f = False
@@ -459,13 +466,14 @@ def filterLittleDriftLoop(df_data, max_velocity=50):
                and (abs(df_data_copy.loc[fixed_idx, 'x'] - dropped_x) < 0.5)
                and (abs(df_data_copy.loc[fixed_idx, 'y'] - dropped_y) < 0.5)):
             # print(fixed_idx)
+            litD_num += 1  # 统计
             df_data_copy = df_data_copy.drop(fixed_idx, axis=0)
             fixed_idx += 1
 
         df_data_copy.reset_index(drop=True, inplace=True)
         # FIXME: 这一步有待商榷↓
         # df_data_copy = paddingLittleDrift(df_data_copy, fixed_idx)
-    return df_data_copy
+    return df_data_copy, litD_num
 
 
 def driftJudge(velocity_between, max_velocity):
@@ -474,7 +482,7 @@ def driftJudge(velocity_between, max_velocity):
     return velocity_between[judger].empty
 
 
-little_drift_df_filter = filterLittleDriftLoop(little_drift_df)
+# little_drift_df_filter = filterLittleDriftLoop(little_drift_df)
 
 
 def allDriftFilterPerSlice(sliced_df, xy_template):
@@ -487,11 +495,13 @@ def allDriftFilterPerSlice(sliced_df, xy_template):
     @Returns sliced_df_filter : 过滤后的行驶片段df
     -------
     """
+    bigD_num = 0
+    litD_num = 0
     # 大漂移纠正
     outliers_idx = findTemplateNotMatchP(sliced_df, xy_template)
     if (2 * len(outliers_idx) > sliced_df.shape[0]):
         # 异常值太多，不可用
-        return sliced_df.iloc[0]
+        return sliced_df.iloc[0:1], 0, sliced_df.shape[0]
     first_idx = findFirstNormal(outliers_idx)
     if first_idx == -1:
         first_idx = 0
@@ -501,20 +511,21 @@ def allDriftFilterPerSlice(sliced_df, xy_template):
     sliced_df_filter = paddingDrift(sliced_df, outliers_idx, first_idx)
     sliced_df_filter = sliced_df_filter.iloc[first_idx:]
     sliced_df_filter.reset_index(drop=True, inplace=True)
+    bigD_num = len(outliers_idx)  # 统计大漂移个数
     # 小漂移纠正
-    sliced_df_filter = filterLittleDriftLoop(sliced_df_filter, 36)
+    sliced_df_filter, litD_num = filterLittleDriftLoop(sliced_df_filter, 36)
     # 再填充
     outliers_idx = findTemplateNotMatchP(sliced_df_filter, xy_template)
     sliced_df_filter = paddingDrift(sliced_df_filter,
                                     outliers_idx,
                                     0,
                                     repad=True)
-    return sliced_df_filter
+    return sliced_df_filter, litD_num, bigD_num
 
 
 # 单元测试
-little_drift_df_filter = allDriftFilterPerSlice(little_drift_df,
-                                                xy_template_filter_reindex)
+# little_drift_df_filter = allDriftFilterPerSlice(little_drift_df,
+#                                                 xy_template_filter_reindex)
 
 
 def allDriftFilter(sliced_result, xy_template):
@@ -527,25 +538,48 @@ def allDriftFilter(sliced_result, xy_template):
     @Returns sliced_result_filter: list
     -------
     """
+    little_drift_nums = []
+    big_drift_nums = []
     for i in range(len(sliced_result)):
         print("!" * 10, "i = ", i)
         if sliced_result[i].shape[0] <= 10:
             continue
         df_tmp = sliced_result[i].reset_index(drop=True)  # 重索引，扔掉旧索引
-        sliced_result[i] = allDriftFilterPerSlice(df_tmp, xy_template)
-    return sliced_result
+        print('caonima', i)
+        sliced_result[i], litD_num, bigD_num = allDriftFilterPerSlice(
+            df_tmp, xy_template)
+
+        little_drift_nums.append(litD_num)
+        big_drift_nums.append(bigD_num)
+    return sliced_result, little_drift_nums, big_drift_nums
 
 
-# 这一步之前建议先运行car_df_filter = filterBySquare(car_df)
-filter_result = allDriftFilter(sliced_result, xy_template_filter_reindex)
+little_drift_nums = []
+big_drift_nums = []
+with open("/home/Gong.gz/HDD/2021-NCBDC/txt/clean" + car_str[:-1] + '.txt',
+          'w') as f:
+    f.write(car_str[:-1] + '\n')
+    f.write('Before Drift, Data.shape = ' + str(car_df.shape) + '\n')
+
+    # 这一步之前建议先运行car_df_filter = filterBySquare(car_df)
+    filter_result, little_drift_nums, big_drift_nums = allDriftFilter(
+        sliced_result, xy_template_filter_reindex)
+
+    f.write('\nAfter Processing Drift: ---> ')
+    f.write('The Number of Little Drift is: ' +
+            str(np.array(little_drift_nums).sum()))
+    f.write('\n')
+    f.write('                             The Number of Big Drift is: ' +
+            str(np.array(big_drift_nums).sum()))
+
 
 # 直接拼接行驶片段
 def concatDriveSlicer(sliced_result):
     car_df_filter_by_drive = None
     update_flag = False
     for i in range(len(sliced_result)):
-        if ((sliced_result[i]['index'] > 427189).any()):
-            print(i)
+        # if ((sliced_result[i]['index'] > 427189).any()):
+        #     print(i)
         if sliced_result[i].shape[0] < 40:  #10 min
             continue
         if update_flag == False:
@@ -558,13 +592,36 @@ def concatDriveSlicer(sliced_result):
 
 
 car_df_filter_by_drive = concatDriveSlicer(filter_result)
-car_df_filter_by_drive_filter = filterBySquare(car_df_filter_by_drive)
+with open("/home/Gong.gz/HDD/2021-NCBDC/txt/clean" + car_str[:-1] + '.txt',
+          'a') as f:
+    f.write('\n\nAfter Drift, Data.shape = ' +
+            str(car_df_filter_by_drive.shape[0]))
+    
+def filterBySquareTwice(car_df_data):
+    # FIXME: 不规范写法
+    x_low = 3.3005e7
+    x_up = 3.30218e7
+    y_low = 6.8195e6
+    y_up = 6.8255e6
+    car_df_filter = car_df_data[(car_df_data['x'] >= x_low)
+                                & (car_df_data['x'] <= x_up) &
+                                (car_df_data['y'] >= y_low) &
+                                (car_df_data['y'] <= y_up)]
+    return car_df_filter
+car_df_filter_by_drive_filter = filterBySquareTwice(car_df_filter_by_drive)
+# plt.savefig(r'/home/Gong.gz/HDD/2021-NCBDC/figure/car10(NO.40)/scatter_cardf_drift_out.jpg',dpi=300)
+car_df_filter_by_drive_filter = car_df_filter_by_drive_filter[(car_df_filter_by_drive_filter['充电状态'] == 3) &
+                                     (car_df_filter_by_drive_filter['车辆状态'] == 1)]  # 删除充电片段
 
+######################### SAVE File ################################
+# car_df_filter_by_drive.to_csv('/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/drift_preprocessing_csv/car'+str(num)+'.csv')
+car_df_filter_by_drive_filter.to_csv('/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/recleaned_data_tuXkAndGgz/car'+str(num)+'fliterDrift.csv')
 ######################### SAVE Pickle ################################
-# import pickle
-# save_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/saved_pickle/car1_NO41"
-# with open(save_path,'wb') as f:
-#     pickle.dump(filter_result,f)
-        
+import pickle
+
+save_path = "/home/Gong.gz/QunHui-Public_Dataset/Gong.gz/2021-NCBDC/saved_pickle/TuXkClean_car0.pkl"
+with open(save_path, 'wb') as f:
+    pickle.dump(filter_result, f)
+
 # with open(save_path, 'rb') as read_f:   #用with的优点是可以不用写关闭文件操作
 #     sliced_result_ffile = pickle.load(read_f)
