@@ -15,6 +15,7 @@ class Slicer:
         self.resolution_ = resolution
         self.map_height_ = -1
         self.map_width_ = -1
+        self.is_normalized_ = False
 
     def updateMinMaxXY(self, cars_data, car_num):
         """
@@ -63,7 +64,10 @@ class Slicer:
     def getMapSize(self):
         return (self.map_height_, self.map_width_)
 
-    def pathSlice(self, cars_data, car_num):
+    def setNormalizeFlag(self, is_normalized):
+        self.is_normalized_ = is_normalized
+
+    def pathSlice(self, cars_data, car_num, time_range=None):
         """
         @description : 将所有车按格子划分
         ---------
@@ -84,12 +88,18 @@ class Slicer:
         # 遍历
         for car_id in range(car_num):  # 遍历车
             data = cars_data[car_id]
-            data = self.xyNormalize4OneCar(data)
+            if(not self.is_normalized_):  # 避免重复归一化
+                data = self.xyNormalize4OneCar(data)
             data = self.mapGrid(data)
+            if time_range is not None:
+                data = data[(data['normalized_time'].apply(lambda x:x.hour) >= time_range[0])
+                            & (data['normalized_time'].apply(lambda x:x.hour) < time_range[1])]
             for i in range(self.map_height_):
                 for j in range(self.map_width_):
                     # 遍历地图
                     result[(i, j)][car_id] = []
+                    if data.empty:
+                        continue  # empty data
                     tmp_data_mask = ((data['discrete_x'] == i) &
                                      (data['discrete_y'] == j)).astype(int)
                     # 找到连续序号，并指定起点（格子内起点的上一个点）与终点
@@ -143,6 +153,9 @@ class DataLoader:
             tmp_data = tmp_data[~(tmp_data['x'].isnull())]
             tmp_data = tmp_data[(tmp_data['充电状态'] == 2) |
                                 (tmp_data['充电状态'] == 3)]
+            # TODO:
+            tmp_data['normalized_time'] = pd.to_datetime(
+                tmp_data['normalized_time'], format="%Y-%m-%d %H:%M:%S")
             self.loaded_data.append(tmp_data)
 
     @property
@@ -215,55 +228,69 @@ for i in range(car_num):
 #         )
 loader = DataLoader(file_names)
 loader.loadAllData()
-slicer = Slicer(1000)  # 分辨率1000m
-result = slicer.pathSlice(loader.data, car_num)
-data_set = DataSet(result, slicer, car_num)
-(ft, lb) = data_set.data
+time_range_list = [0, 7, 9, 11, 13, 15, 17, 19, 21, 24]
+time_range_list = list(range(0, 25))
+ft_list = []
+lb_list = []
+average_energy_list = []
+is_normalized = False
+for i in range(len(time_range_list) - 1):
+    time_range = [time_range_list[i], time_range_list[i+1]]
+    slicer = Slicer(1000)  # 分辨率1000m
+    slicer.setNormalizeFlag(is_normalized)  # 初次运行需要标准化
+    # print(time_range)
+    result = slicer.pathSlice(loader.data, car_num, time_range)
+    is_normalized = True
+    data_set = DataSet(result, slicer, car_num)
+    (ft, lb) = data_set.data
+    ft_list.append(ft)
+    lb_list.append(lb)
 
-# 平均能耗
-average_energy = {}
-for i in range(slicer.getMapSize()[0]):
-    for j in range(slicer.getMapSize()[1]):
-        cum_mileage = 0.1
-        cum_energy = 0
-        for k in range(car_num):
-            for h in range(len(ft[(i, j)][k])):
-                # 计算每公里能耗
-                dt = pd.to_datetime(
-                    ft[(i, j)][k][h]['时间'],
-                    format="%Y-%m-%d %H:%M:%S").diff().iloc[1:].apply(
-                        lambda x: x.seconds)
-                if dt.empty:
-                    continue
-                dt[dt >= 10 * 60] = 15  # 时间间隔过大（大于10分钟），截断一下，否则会积分出很大的值
-                u_tmp = ft[(i, j)][k][h]['总电压']  # 0~1000V
-                # -1000~1000A
-                # i_tmp = np.abs(ft[(i, j)][k][h]['总电流']) # FIXME: 直接取绝对值不可行
-                i_tmp = ft[(i, j)][k][h]['总电流'].copy()
-                i_tmp[i_tmp < 0] = i_tmp[i_tmp < 0] / 4  # 假设15s有1/4时间在刹车
-                accum_mileage = (ft[(i, j)][k][h]['累计里程'].iloc[-1] -
-                                 ft[(i, j)][k][h]['累计里程'].iloc[0]
-                                 )  # 0~999999.9km
-                if (u_tmp.shape[0] == 1):
-                    # print("only one voltage!")
-                    continue
-                if accum_mileage < 0:
-                    # print('i=',i,'j=',j,'k=',k,'h=',h)
-                    # print("Negative accumulated mileage!")
-                    continue
-                cum_mileage = cum_mileage + accum_mileage
-                if i == 0 and j == 3:
-                    print('NAN!')
-                    print('i=', i, 'j=', j, 'k=', k, 'h=', h)
-                    print('cum_mileage = ', cum_mileage, '+', accum_mileage)
+    # 平均能耗
+    average_energy = {}
+    for i in range(slicer.getMapSize()[0]):
+        for j in range(slicer.getMapSize()[1]):
+            cum_mileage = 0.1
+            cum_energy = 0
+            for k in range(car_num):
+                for h in range(len(ft[(i, j)][k])):
+                    # 计算每公里能耗
+                    dt = pd.to_datetime(
+                        ft[(i, j)][k][h]['时间'],
+                        format="%Y-%m-%d %H:%M:%S").diff().iloc[1:].apply(
+                            lambda x: x.seconds)
+                    if dt.empty:
+                        continue
+                    dt[dt >= 10 * 60] = 15  # 时间间隔过大（大于10分钟），截断一下，否则会积分出很大的值
+                    u_tmp = ft[(i, j)][k][h]['总电压']  # 0~1000V
+                    # -1000~1000A
+                    # i_tmp = np.abs(ft[(i, j)][k][h]['总电流']) # FIXME: 直接取绝对值不可行
+                    i_tmp = ft[(i, j)][k][h]['总电流'].copy()
+                    i_tmp[i_tmp < 0] = i_tmp[i_tmp < 0] / 4  # 假设15s有1/4时间在刹车
+                    accum_mileage = (ft[(i, j)][k][h]['累计里程'].iloc[-1] -
+                                     ft[(i, j)][k][h]['累计里程'].iloc[0]
+                                     )  # 0~999999.9km
+                    if (u_tmp.shape[0] == 1):
+                        # print("only one voltage!")
+                        continue
+                    if accum_mileage < 0:
+                        # print('i=',i,'j=',j,'k=',k,'h=',h)
+                        # print("Negative accumulated mileage!")
+                        continue
+                    cum_mileage = cum_mileage + accum_mileage
+                    if i == 0 and j == 3:
+                        print('NAN!')
+                        print('i=', i, 'j=', j, 'k=', k, 'h=', h)
+                        print('cum_mileage = ', cum_mileage, '+', accum_mileage)
 
-                cum_energy = cum_energy + (
-                    np.sum(u_tmp.iloc[:-1].reset_index(drop=True) * i_tmp.iloc[:-
-                           1].reset_index(drop=True) * dt.reset_index(drop=True)) / 1000
-                )  # kJ/km
-        # print('average_energy[(i, j)] = ',cum_energy ,'/',cum_mileage)
-        average_energy[(i, j)] = cum_energy / cum_mileage
+                    cum_energy = cum_energy + (
+                        np.sum(u_tmp.iloc[:-1].reset_index(drop=True) * i_tmp.iloc[:-
+                                                                                   1].reset_index(drop=True) * dt.reset_index(drop=True)) / 1000
+                    )  # kJ/km
+            # print('average_energy[(i, j)] = ',cum_energy ,'/',cum_mileage)
+            average_energy[(i, j)] = cum_energy / cum_mileage
 
+    average_energy_list.append(average_energy)
 # -----------------------------------------------------------------
 # 找第四辆车位于x∈(80000,100000),y∈(50000,60000)范围内的路段
 
@@ -308,8 +335,8 @@ def calEnergy(data, car_id, start_idx, end_idx):
     return energy / 1000
 
 
+# correct_energy2 = calEnergy(loader.data, 5, 0, 30)  # KJ
 correct_energy2 = calEnergy(loader.data, 6, 380, 500)  # KJ
-
 
 # 确保discrete_x/y有值
 slicer.updateMinMaxXY(loader.data, car_num)
@@ -318,7 +345,7 @@ slicer.min_y = 6815930.0
 slicer.max_x = 33024548.0
 slicer.max_y = 6827234.0
 
-for car_id in range(5, 6):  # 遍历车
+for car_id in range(6, 7):  # 遍历车
     data = loader.data[car_id]
     data = slicer.xyNormalize4OneCar(data)
     data = slicer.mapGrid(data)
@@ -349,5 +376,43 @@ def calEnergyByGrid(data, car_id, start_idx, end_idx, grid):
     return cum_energy, cum_mileage
 
 
-grid_energy2, cum_km = calEnergyByGrid(loader.data, 5, 0, 30,
+# grid_energy2, cum_km = calEnergyByGrid(loader.data, 5, 0, 30,
+#                                        average_energy)
+grid_energy2, cum_km = calEnergyByGrid(loader.data, 6, 380, 500,
                                        average_energy)
+
+
+def calEnergyByGridWithTimeRange(data, car_id, start_idx, end_idx, time_range, grid_list):
+    tmp_data = data[car_id].iloc[start_idx:end_idx]
+    mask = (tmp_data['discrete_x'].diff()
+            ) != 0 | (tmp_data['discrete_y'].diff() != 0)
+    indices = np.where(mask == True)[0].tolist()
+    if indices[-1] != tmp_data.shape[0] - 1:
+        indices.append(tmp_data.shape[0] - 1)
+    # print(indices)
+    cum_energy = 0
+    cum_mileage = 0
+    for idx in range(len(indices) - 1):
+        start_idx, end_idx = indices[idx], indices[idx + 1]
+        one_grid_data = tmp_data.iloc[start_idx:end_idx+1]
+        # print(one_grid_data)
+        # print(one_grid_data['累计里程'].iloc[-1])
+        # print(one_grid_data['累计里程'].iloc[0])
+        # 找到合适的网格
+        which_grid = np.where(
+            np.array(time_range) > one_grid_data.iloc[0]['normalized_time'].hour)[0][0] - 1
+        grid = grid_list[which_grid]
+        cum_energy = cum_energy + (one_grid_data['累计里程'].iloc[-1] - one_grid_data['累计里程'].iloc[0]) * \
+            grid[(one_grid_data.iloc[0]['discrete_x'],
+                  one_grid_data.iloc[0]['discrete_y'])]
+        cum_mileage = cum_mileage + \
+            (one_grid_data['累计里程'].iloc[-1] - one_grid_data['累计里程'].iloc[0])
+        # print((one_grid_data['累计里程'].iloc[-1] - one_grid_data['累计里程'].iloc[0]))
+    return cum_energy, cum_mileage
+
+
+# grid_energy2, cum_km = calEnergyByGridWithTimeRange(loader.data, 5, 0, 30,
+#                                                     time_range_list, average_energy_list)
+
+grid_energy2, cum_km = calEnergyByGridWithTimeRange(loader.data, 6, 380, 500,
+                                                    time_range_list, average_energy_list)
