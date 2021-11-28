@@ -37,7 +37,10 @@ def drawRect(x, y, long=1000, wide=1000):
     plt.plot([x1, x2, x3, x4, x1], [y1, y2, y3, y4, y1], 'k', linewidth=0.5)
 
 
-time_range_list = list(range(0, 25))
+MAX_ENERGY = 10000  # 绘图过程中忽略大于该值的能量值
+# time_range_list = list(range(0, 25))
+time_range_list = [None, None]  # For season slice
+# time_range_list = [0, 7, 9, 11, 13, 15, 17, 19, 21, 24]
 for time_id in range(len(time_range_list) - 1):
     average_energy = average_energy_list[time_id]
 
@@ -53,7 +56,7 @@ for time_id in range(len(time_range_list) - 1):
     # 用于绘制散点图
     xx_scatter = None
     cc_scatter = None
-    width, height = 22, 12
+    width, height = list(average_energy.keys())[-1]
 
     for i in range(width):  # 遍历每一个格子
         for j in range(height):
@@ -63,10 +66,19 @@ for time_id in range(len(time_range_list) - 1):
             # 画点
             # plt.plot(mean[0], mean[1], 'ko', markersize=1)
             # 正态分布采样
-            xx = np.random.multivariate_normal(
-                mean, cov, int(max(abs(average_energy[(i, j)] / 8), 1)), 'raise')
-            cc = np.array(
-                [0.4 * abs(average_energy[(i, j)])**0.5] * xx.shape[0])
+            # xx = np.random.multivariate_normal(
+            #     mean, cov, int(max(abs(average_energy[(i, j)] / 8), 1)), 'raise')
+            if (abs(average_energy[(i, j)]) < MAX_ENERGY):
+                xx = np.random.multivariate_normal(
+                    mean, cov, int(max(abs(average_energy[(i, j)] / 8), 1)),
+                    'raise')
+                cc = np.array([0.4 * abs(average_energy[(i, j)])**0.5] *
+                              xx.shape[0])
+            else:
+                xx = np.random.multivariate_normal(mean, cov,
+                                                   int(max(abs(1), 1)),
+                                                   'raise')
+                cc = np.array([0.4 * abs(0)**0.5] * xx.shape[0])
             # 拼接成数组
             if xx_scatter is None:
                 xx_scatter = xx
@@ -92,7 +104,7 @@ for time_id in range(len(time_range_list) - 1):
 
     # 锚点
     xxyy_no_use = np.array([[-10000, -10000], [-10000, -8000]])
-    cc_no_use = np.array([0, 0.4 * abs(25000)**0.5])
+    cc_no_use = np.array([0, 0.4 * abs(MAX_ENERGY)**0.5])
     if xx_scatter is None:
         xx_scatter = xxyy_no_use
         cc_scatter = cc_no_use
@@ -107,8 +119,8 @@ for time_id in range(len(time_range_list) - 1):
                      alpha=0.4,
                      c=cc_scatter,
                      cmap='coolwarm')
-    plt.colorbar(sc)
-    
+    # plt.colorbar(sc)
+
     # min_x = 33003950.0
     # min_y = 6815930.0
     # car_num = 6
@@ -123,8 +135,15 @@ for time_id in range(len(time_range_list) - 1):
     # plt.axis('equal')
     plt.xlabel("x/m")
     plt.ylabel("y/m")
-    title_str = f"HeatMap (KJ/KM) {time_range_list[time_id]}:00-{time_range_list[time_id+1]}:00"
+    # title_str = f"HeatMap(Ignore>10000) (KJ/KM) {time_range_list[time_id]}:00-{time_range_list[time_id+1]}:00"
+    title_str = f"HeatMap(Ignore>10000) (KJ/KM) {sliced_season}"
     plt.title(title_str)
     plt.axis([-1000, 21500, -1000, 12500])
-    plt.savefig(r'/home/Gong.gz/HDD/my_data/2021-NCBDC/figure/heatmap/time_range/24_hour/' + f"{time_range_list[time_id]}_{time_range_list[time_id+1]}.jpg",
-                dpi=600)
+    # plt.savefig(
+    #     r'/home/Gong.gz/HDD/my_data/2021-NCBDC/figure/heatmap/season/'
+    #     + f"{time_range_list[time_id]}_{time_range_list[time_id+1]}.jpg",
+    #     dpi=600)
+    plt.savefig(
+        r'/home/Gong.gz/HDD/my_data/2021-NCBDC/figure/heatmap/season/'
+        + f"{sliced_season}.jpg",
+        dpi=600)

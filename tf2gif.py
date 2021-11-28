@@ -13,15 +13,15 @@ def create_gif(img_dir, image_list, gif_name, duration=0.05):
 
 
 # def main():
-img_dir = '/home/Gong.gz/HDD/my_data/2021-NCBDC/figure/heatmap/time_range/24_hour_filled'
+img_dir = '/home/Gong.gz/HDD/my_data/2021-NCBDC/figure/heatmap/time_range/24_hour_filled_ignoreLarge'
 duration = 0.5  # 每秒2帧
-time_range_list = [0, 7, 9, 11, 13, 15, 17, 19, 21, 24]
+# time_range_list = [0, 7, 9, 11, 13, 15, 17, 19, 21, 24]
 time_range_list = list(range(0, 25))
 image_list = []
 for i in range(len(time_range_list) - 1):
     image_list.append(f'{time_range_list[i]}_{time_range_list[i+1]}.jpg')
 
-gif_name = img_dir + '/heatmap.gif'
+gif_name = img_dir + '/heatmap_24hour_filled_ignore.gif'
 create_gif(img_dir, image_list, gif_name, duration)
 
 

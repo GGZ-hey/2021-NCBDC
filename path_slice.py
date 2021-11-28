@@ -1,4 +1,5 @@
 from numpy.lib.npyio import load
+from numpy.lib.type_check import real
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
@@ -88,12 +89,14 @@ class Slicer:
         # 遍历
         for car_id in range(car_num):  # 遍历车
             data = cars_data[car_id]
-            if(not self.is_normalized_):  # 避免重复归一化
+            if (not self.is_normalized_):  # 避免重复归一化
                 data = self.xyNormalize4OneCar(data)
             data = self.mapGrid(data)
             if time_range is not None:
-                data = data[(data['normalized_time'].apply(lambda x:x.hour) >= time_range[0])
-                            & (data['normalized_time'].apply(lambda x:x.hour) < time_range[1])]
+                data = data[(data['normalized_time'].apply(lambda x: x.hour) >=
+                             time_range[0])
+                            & (data['normalized_time'].apply(lambda x: x.hour)
+                               < time_range[1])]
             for i in range(self.map_height_):
                 for j in range(self.map_width_):
                     # 遍历地图
@@ -119,10 +122,10 @@ class Slicer:
                     else:
                         # 长度一致也有可能包含起点与终点
                         if ((data['discrete_x'].iloc[0] == i) &
-                                (data['discrete_y'].iloc[0] == j)):
+                            (data['discrete_y'].iloc[0] == j)):
                             start_indices.insert(0, 0)
                         if ((data['discrete_x'].iloc[-1] == i) &
-                                (data['discrete_y'].iloc[-1] == j)):
+                            (data['discrete_y'].iloc[-1] == j)):
                             end_indices.append(data.shape[0] - 1)
 
                     assert (len(start_indices) == len(end_indices))
@@ -131,6 +134,26 @@ class Slicer:
                         result[(i, j)][car_id].append(data.iloc[sid:eid + 1])
 
         return result
+
+    def sliceRealRoad(self, real_road: pd.DataFrame, is_normalize_):
+        """
+        @description : 将真实的路切分到网格
+        ---------
+        @param real_road : DataFrame with columns[['经度','纬度','x','y']]
+        @param is_normalize : if x/y is normalized by zeros(min_x=0, min_y=0) 
+        -------
+        @Returns : 字典，result[(i, j)][k]:pd.DataFrame -> 第i行第j列格子，第k个真实的路(k从0开始)
+        -------
+        """
+        tmp_real_road = [real_road]
+        self.setNormalizeFlag(is_normalize_)
+        real_path_slice = self.pathSlice(tmp_real_road, 1, None)
+        xx_range, yy_range = list(real_path_slice.keys())[-1]
+        # 重新赋值去除内层列表
+        for xx in range(xx_range + 1):
+            for yy in range(yy_range + 1):
+                real_path_slice[(xx, yy)] = real_path_slice[(xx, yy)][0]
+        return real_path_slice
 
 
 class DataLoader:
@@ -157,6 +180,45 @@ class DataLoader:
             tmp_data['normalized_time'] = pd.to_datetime(
                 tmp_data['normalized_time'], format="%Y-%m-%d %H:%M:%S")
             self.loaded_data.append(tmp_data)
+
+    def getSeasonData(self, season):
+        """
+        @description  : 按照季节划分数据
+        ---------
+        @param  :
+            season : 季节str(spring|summer|autumn|winter) 
+        -------
+        @Returns  : filter data -> List(pd.DataFrame)
+        -------
+        """
+        data_filter = []
+        for i in range(len(self.loaded_data)):
+            if (season == 'spring'):
+                # 3, 4, 5 月
+                tmp_data = self.loaded_data[i].copy(deep=True)
+                months = tmp_data['normalized_time'].apply(lambda x: x.month)
+                tmp_data = tmp_data[(months >= 3) & (months <= 5)]
+            elif (season == 'summer'):
+                # 6, 7, 8 月
+                tmp_data = self.loaded_data[i].copy(deep=True)
+                months = tmp_data['normalized_time'].apply(lambda x: x.month)
+                tmp_data = tmp_data[(months >= 6) & (months <= 8)]
+            elif (season == 'autumn'):
+                # 9, 10, 11 月
+                tmp_data = self.loaded_data[i].copy(deep=True)
+                months = tmp_data['normalized_time'].apply(lambda x: x.month)
+                tmp_data = tmp_data[(months >= 9) & (months <= 11)]
+            elif (season == 'winter'):
+                # 12, 1, 2 月
+                tmp_data = self.loaded_data[i].copy(deep=True)
+                months = tmp_data['normalized_time'].apply(lambda x: x.month)
+                tmp_data = tmp_data[(months >= 12) | ((months >= 1) &
+                                                      (months <= 2))]
+            else:
+                raise ValueError('Season Input Error!')
+            tmp_data = tmp_data.reset_index(drop=True)
+            data_filter.append(tmp_data)
+        return data_filter
 
     @property
     def data(self):
@@ -204,8 +266,10 @@ class DataSet:
                         if (accum_mileage == 0):
                             accum_mileage = 0.1
                         assert (accum_mileage != 0)
-                        ecpk = np.sum(u_tmp.iloc[:-1].reset_index(drop=True) * i_tmp.iloc[:-1].reset_index(
-                            drop=True) * dt.reset_index(drop=True)) / accum_mileage / 1000  # kJ/km
+                        ecpk = np.sum(u_tmp.iloc[:-1].reset_index(drop=True) *
+                                      i_tmp.iloc[:-1].reset_index(drop=True) *
+                                      dt.reset_index(drop=True)
+                                      ) / accum_mileage / 1000  # kJ/km
                         self.label_[(i, j)][k].append(ecpk)
 
         self.features_ = result
@@ -228,18 +292,26 @@ for i in range(car_num):
 #         )
 loader = DataLoader(file_names)
 loader.loadAllData()
+# 按季节划分
+is_sliced_byseason = False
+sliced_season = 'None'
+# 按时间范围划分
 time_range_list = [0, 7, 9, 11, 13, 15, 17, 19, 21, 24]
-time_range_list = list(range(0, 25))
+# time_range_list = list(range(0, 25))
+# time_range_list = [None,None] # For season slice
 ft_list = []
 lb_list = []
 average_energy_list = []
 is_normalized = False
-for i in range(len(time_range_list) - 1):
-    time_range = [time_range_list[i], time_range_list[i+1]]
+for i in range(len(time_range_list) - 1):  # 遍历时间段
+    time_range = [time_range_list[i], time_range_list[i + 1]]
     slicer = Slicer(1000)  # 分辨率1000m
     slicer.setNormalizeFlag(is_normalized)  # 初次运行需要标准化
     # print(time_range)
-    result = slicer.pathSlice(loader.data, car_num, time_range)
+    if is_sliced_byseason:
+        result = slicer.pathSlice(loader.getSeasonData(sliced_season), car_num)
+    else:
+        result = slicer.pathSlice(loader.data, car_num, time_range)
     is_normalized = True
     data_set = DataSet(result, slicer, car_num)
     (ft, lb) = data_set.data
@@ -281,16 +353,18 @@ for i in range(len(time_range_list) - 1):
                     if i == 0 and j == 3:
                         print('NAN!')
                         print('i=', i, 'j=', j, 'k=', k, 'h=', h)
-                        print('cum_mileage = ', cum_mileage, '+', accum_mileage)
+                        print('cum_mileage = ', cum_mileage, '+',
+                              accum_mileage)
 
                     cum_energy = cum_energy + (
-                        np.sum(u_tmp.iloc[:-1].reset_index(drop=True) * i_tmp.iloc[:-
-                                                                                   1].reset_index(drop=True) * dt.reset_index(drop=True)) / 1000
-                    )  # kJ/km
+                        np.sum(u_tmp.iloc[:-1].reset_index(drop=True) *
+                               i_tmp.iloc[:-1].reset_index(drop=True) *
+                               dt.reset_index(drop=True)) / 1000)  # kJ/km
             # print('average_energy[(i, j)] = ',cum_energy ,'/',cum_mileage)
             average_energy[(i, j)] = cum_energy / cum_mileage
 
     average_energy_list.append(average_energy)
+
 # -----------------------------------------------------------------
 # 找第四辆车位于x∈(80000,100000),y∈(50000,60000)范围内的路段
 
@@ -308,8 +382,8 @@ min_y = 6815930.0
 max_x = 33024548.0
 max_y = 6827234.0
 
-idx = findRoadGivenNum(loader.data, 6, min_x+5000,
-                       min_x+10000, min_y+4000, min_y+10000)
+idx = findRoadGivenNum(loader.data, 6, min_x + 5000, min_x + 10000,
+                       min_y + 4000, min_y + 10000)
 
 # car_4 -> 0:200 indices
 # car_5 -> 650:740 indices
@@ -331,7 +405,8 @@ def calEnergy(data, car_id, start_idx, end_idx):
     i_tmp[i_tmp < 0] = i_tmp[i_tmp < 0] / 4  # 假设15s有1/4时间在刹车
 
     energy = np.sum(u_tmp.iloc[:-1].reset_index(drop=True) *
-                    i_tmp.iloc[:-1].reset_index(drop=True) * dt.reset_index(drop=True))
+                    i_tmp.iloc[:-1].reset_index(drop=True) *
+                    dt.reset_index(drop=True))
     return energy / 1000
 
 
@@ -363,7 +438,7 @@ def calEnergyByGrid(data, car_id, start_idx, end_idx, grid):
     cum_mileage = 0
     for idx in range(len(indices) - 1):
         start_idx, end_idx = indices[idx], indices[idx + 1]
-        one_grid_data = tmp_data.iloc[start_idx:end_idx+1]
+        one_grid_data = tmp_data.iloc[start_idx:end_idx + 1]
         # print(one_grid_data)
         # print(one_grid_data['累计里程'].iloc[-1])
         # print(one_grid_data['累计里程'].iloc[0])
@@ -382,7 +457,8 @@ grid_energy2, cum_km = calEnergyByGrid(loader.data, 6, 380, 500,
                                        average_energy)
 
 
-def calEnergyByGridWithTimeRange(data, car_id, start_idx, end_idx, time_range, grid_list):
+def calEnergyByGridWithTimeRange(data, car_id, start_idx, end_idx, time_range,
+                                 grid_list):
     tmp_data = data[car_id].iloc[start_idx:end_idx]
     mask = (tmp_data['discrete_x'].diff()
             ) != 0 | (tmp_data['discrete_y'].diff() != 0)
@@ -394,13 +470,14 @@ def calEnergyByGridWithTimeRange(data, car_id, start_idx, end_idx, time_range, g
     cum_mileage = 0
     for idx in range(len(indices) - 1):
         start_idx, end_idx = indices[idx], indices[idx + 1]
-        one_grid_data = tmp_data.iloc[start_idx:end_idx+1]
+        one_grid_data = tmp_data.iloc[start_idx:end_idx + 1]
         # print(one_grid_data)
         # print(one_grid_data['累计里程'].iloc[-1])
         # print(one_grid_data['累计里程'].iloc[0])
         # 找到合适的网格
         which_grid = np.where(
-            np.array(time_range) > one_grid_data.iloc[0]['normalized_time'].hour)[0][0] - 1
+            np.array(time_range) > one_grid_data.iloc[0]
+            ['normalized_time'].hour)[0][0] - 1
         grid = grid_list[which_grid]
         cum_energy = cum_energy + (one_grid_data['累计里程'].iloc[-1] - one_grid_data['累计里程'].iloc[0]) * \
             grid[(one_grid_data.iloc[0]['discrete_x'],
@@ -415,4 +492,5 @@ def calEnergyByGridWithTimeRange(data, car_id, start_idx, end_idx, time_range, g
 #                                                     time_range_list, average_energy_list)
 
 grid_energy2, cum_km = calEnergyByGridWithTimeRange(loader.data, 6, 380, 500,
-                                                    time_range_list, average_energy_list)
+                                                    time_range_list,
+                                                    average_energy_list)
